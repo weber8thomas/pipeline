@@ -1,79 +1,54 @@
+# Python imports
 import math
 from collections import defaultdict
-
-configfile: "Snake.config.yaml"
-
 import os, sys
 
-# print(os.listdir(os.getcwd()))
-# print(os.listdir("bam"))
-
-SAMPLE,BAM = glob_wildcards(config['input_bam_location'] + "{sample}/selected/{bam}.bam")
-
-print(SAMPLE)
-print(BAM)
-
-SAMPLES = sorted(set(SAMPLE))
-
-print(SAMPLES)
-from pprint import pprint
-
-
-CELL_PER_SAMPLE= defaultdict(list)
-BAM_PER_SAMPLE = defaultdict(list)
-
-
-for sample,bam in zip(SAMPLE,BAM):
-    BAM_PER_SAMPLE[sample].append(bam)
-    CELL_PER_SAMPLE[sample].append(bam.replace('.sort.mdup',''))
-
-pprint(BAM_PER_SAMPLE)
-pprint(CELL_PER_SAMPLE)
-
-
-ALLBAMS_PER_SAMPLE = defaultdict(list)
-for sample in SAMPLES:
-    ALLBAMS_PER_SAMPLE[sample] = glob_wildcards(config['input_bam_location'] + "{}/all/{{bam}}.bam".format(sample)).bam
-
-pprint(ALLBAMS_PER_SAMPLE)
+# Snakemake config file
+configfile: "Snake.config.yaml"
 
 
 
-print("Detected {} samples:".format(len(SAMPLES)))
-for s in SAMPLES:
-    print("  {}:\t{} cells\t {} selected cells".format(s, len(ALLBAMS_PER_SAMPLE[s]), len(BAM_PER_SAMPLE[s])))
+"""
+From Snakemake config file, generate input files architecture : 1 sample per folder and 1 or multiple BAM files per sample
+"""
 
+# Retrieve samples and bam files into python lists
+sample_list, bam_list = glob_wildcards(config['input_bam_location'] + "{sample}/selected/{bam}.bam")
 
-exit()
+print(sample_list, type(sample_list))
+print(bam_list, type(bam_list))
+
+# cell_per_sample= defaultdict(list)
+bam_per_sample = defaultdict(list)
+
+for sample,bam in zip(sample_list,bam_list):
+    bam_per_sample[sample].append(bam)
+    # cell_per_sample[sample].append(bam.replace('.sort.mdup',''))
+
+# allbams_per_sample = defaultdict(list)
+# for sample in samples:
+#     allbams_per_sample[sample] = glob_wildcards(config['input_bam_location'] + "{}/all/{{bam}}.bam".format(sample)).bam
+
+# print("Detected {} samples:".format(len(samples)))
+# for s in samples:
+#     print("  {}:\t{} cells\t {} selected cells".format(s, len(allbams_per_sample[s]), len(bam_per_sample[s])))
+
 
 import os.path
 
 # Current state of the pipeline:
 # ==============================
-# * count reads in the BAM files (in fixed and variable-width bins of various sizes)
+# * count reads in the bam files (in fixed and variable-width bins of various sizes)
 # * determine strand states of each chromosome in each single cell, including SCEs
 # * plot all single cell libraries in different window sizes
 # * calculate a segmentation into potential SVs using Mosaicatcher
 
 
-METHODS = [
-    "simpleCalls_llr4_poppriorsTRUE_haplotagsTRUE_gtcutoff0_regfactor6_filterFALSE",
-    "simpleCalls_llr4_poppriorsTRUE_haplotagsFALSE_gtcutoff0.05_regfactor6_filterTRUE",
-]
-
-BPDENS = [
-    "selected_j{}_s{}_scedist{}".format(joint, single, scedist) for joint in [0.1] for single in [0.5] for scedist in [20]
-]
-
-# Todo: specify an exact version of the singularity file!
-
-
-
 
 rule all:
     input:
-        expand("counts/{sample}/{window}_fixed.txt.gz", sample=SAMPLES, window=[100000])
-
+        # expand("counts/{sample}/{window}_fixed.txt.gz", sample=samples, window=[100000])
+        "log/exclude_file.temp" 
 
 ################################################################################
 # Read counting                                                                #
@@ -83,7 +58,7 @@ rule generate_exclude_file_1:
     output:
         temp("log/exclude_file.temp")
     input:
-        bam = expand("bam/{sample}/selected/{bam}.bam", sample = SAMPLES[0], bam = BAM_PER_SAMPLE[SAMPLES[0]][0])
+        bam = expand(config['input_bam_location'] + "{sample}/selected/{bam}.bam", sample = sample_list[0], bam = bam_per_sample[sample_list[0]][0])
     log:
         "log/generate_exclude_file_1.log"
     params:
@@ -112,8 +87,8 @@ rule generate_exclude_file_2:
 
 rule mosaic_count_fixed:
     input:
-        bam = lambda wc: expand("bam/" + wc.sample + "/selected/{bam}.bam", bam = BAM_PER_SAMPLE[wc.sample]) if wc.sample in BAM_PER_SAMPLE else "FOOBAR",
-        bai = lambda wc: expand("bam/" + wc.sample + "/selected/{bam}.bam.bai", bam = BAM_PER_SAMPLE[wc.sample]) if wc.sample in BAM_PER_SAMPLE else "FOOBAR",
+        bam = lambda wc: expand("bam/" + wc.sample + "/selected/{bam}.bam", bam = bam_per_sample[wc.sample]) if wc.sample in bam_per_sample else "FOOBAR",
+        bai = lambda wc: expand("bam/" + wc.sample + "/selected/{bam}.bam.bai", bam = bam_per_sample[wc.sample]) if wc.sample in bam_per_sample else "FOOBAR",
         excl = "log/exclude_file"
     output:
         counts = "counts/{sample}/{window}_fixed.txt.gz",
